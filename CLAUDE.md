@@ -36,11 +36,27 @@ On startup, localStorage is read synchronously for instant display, then the
 server is fetched in the background. Optimistic local update on submit; server
 response replaces it with the authoritative list.
 
+## Mobile / touch input
+
+Touch events are attached to `canvas` (not `window`) so `touch-action: none` is respected. A module-level `touch` object tracks the active gesture:
+
+```javascript
+let touch = { active: false, startX, startY, startTime, curX, curY };
+let touchShootPending = false;  // consumed by updateShip / updateWeaponState each frame
+```
+
+- **Tap** (< 180 ms, < 22 px travel): sets `touchShootPending = true` when playing; synthesizes a brief `keys['Space']` press on menu/game-over screens
+- **Drag** (while `touch.active`): `isLeft/isRight/isForward` check displacement from start point against `DRAG_THRESHOLD = 30 px`
+- **Bomb button**: drawn bottom-right when `bombs > 0 && 'ontouchstart' in window`; hit-tested on `touchstart` via `isBombButtonHit()`
+- **Name entry**: when the game transitions to `name_entry` state, the hidden `<input id="nameInput">` is focused so the mobile keyboard appears; its `oninput` keeps `nameEntryText` in sync
+
+`touchShootPending` is cleared at the end of `updateWeaponState` each frame (after both `updateShip` and the laser branch have had a chance to read it via `isShoot()`).
+
 ## game.js section order
 
 1. **Constants** — canvas size, physics tuning, scoring, powerup/friendly config
 2. **Canvas / Context** — single `canvas` + `ctx` reference; `resizeCanvas()` (calls `generateStars` + `generateBackground`)
-3. **Input** — `keys` object; `keydown` also captures name-entry characters when `state === 'name_entry'`
+3. **Input** — `keys` object; touch event listeners on canvas; `DRAG_THRESHOLD`; `isLeft/isRight/isForward/isBack/isShoot/isStart`; `keydown` also captures name-entry characters when `state === 'name_entry'`
 4. **Audio** — lazy `AudioContext` (created on first keypress); all sounds synthesized with oscillators/noise buffers
 5. **Factory functions** — `createShip`, `createBullet`, `createDebris` (includes `craters[]`), `createEnemy`, `createFriendly`, `createPowerup`
 6. **Level config** — `getLevelConfig(n)` returns spawn rate, max debris, speed multiplier
@@ -166,3 +182,4 @@ Noise-based sounds (explosions, bomb) use `AudioBufferSourceNode` with a random 
 - **Laser beam in tests**: `laserBeam` is reset to `null` at the top of `updateWeaponState` each frame, so injecting it via CDP between frames won't produce a visible beam. Works correctly during real gameplay.
 - **AudioContext suspended**: Chrome may suspend the context even after creation. `ensureAudio()` calls `audioCtx.resume()` defensively on each keypress.
 - **bgCanvas on resize**: `generateBackground()` must be called after every resize because the offscreen canvas is sized to `CANVAS_W × CANVAS_H`.
+- **Touch audio gate**: `ensureAudio()` is called in the `touchstart` handler so the first tap (which could be a menu tap before any key is pressed) properly unlocks the `AudioContext` on mobile Chrome/Safari.

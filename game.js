@@ -79,6 +79,8 @@ window.addEventListener('keydown', e => {
     // Name entry input — handle character capture
     if (state === 'name_entry') {
         if (e.key === 'Enter') {
+            const _ni = document.getElementById('nameInput');
+            if (_ni) { _ni.blur(); _ni.style.pointerEvents = 'none'; }
             const enteredName = nameEntryText.trim() || 'PILOT';
             state = 'menu';
             submitScore(enteredName); // async — fire and forget
@@ -92,11 +94,58 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-function isLeft()    { return keys['KeyA']     || keys['ArrowLeft'];  }
-function isRight()   { return keys['KeyD']     || keys['ArrowRight']; }
-function isForward() { return keys['KeyW']     || keys['ArrowUp'];    }
-function isBack()    { return keys['KeyS']     || keys['ArrowDown'];  }
-function isShoot()   { return keys['Space']; }
+canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    ensureAudio();
+    const t = e.touches[0];
+    touch = { active: true, startX: t.clientX, startY: t.clientY,
+              startTime: Date.now(), curX: t.clientX, curY: t.clientY };
+    if (state === 'playing' && bombs > 0 && isBombButtonHit(t.clientX, t.clientY)) {
+        detonateBomb();
+        touch.active = false;
+    }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    touch.curX = e.touches[0].clientX;
+    touch.curY = e.touches[0].clientY;
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+    e.preventDefault();
+    const elapsed = Date.now() - touch.startTime;
+    const moved   = Math.hypot(touch.curX - touch.startX, touch.curY - touch.startY);
+    if (elapsed < 180 && moved < 22) {
+        if (state === 'playing') {
+            touchShootPending = true;
+        } else if (state === 'menu') {
+            keys['Space'] = true;
+            setTimeout(() => { keys['Space'] = false; }, 80);
+        } else if (state === 'game_over' && gameOverLockout <= 0) {
+            keys['Space'] = true;
+            setTimeout(() => { keys['Space'] = false; }, 80);
+        }
+    }
+    touch.active = false;
+}, { passive: false });
+
+const DRAG_THRESHOLD = 30;
+
+function isLeft()    {
+    return keys['KeyA'] || keys['ArrowLeft'] ||
+           (touch.active && (touch.curX - touch.startX) < -DRAG_THRESHOLD);
+}
+function isRight()   {
+    return keys['KeyD'] || keys['ArrowRight'] ||
+           (touch.active && (touch.curX - touch.startX) >  DRAG_THRESHOLD);
+}
+function isForward() {
+    return keys['KeyW'] || keys['ArrowUp'] ||
+           (touch.active && (touch.curY - touch.startY) < -DRAG_THRESHOLD);
+}
+function isBack()    { return keys['KeyS'] || keys['ArrowDown']; }
+function isShoot()   { return keys['Space'] || touchShootPending; }
 function isStart()   { return keys['Space'] || keys['Enter']; }
 
 // ── Audio ───────────────────────────────────────────────────────────────────
@@ -477,6 +526,10 @@ let assistFireTimer;
 
 // Background offscreen canvas
 let bgCanvas = null;
+
+// Touch / mobile input state
+let touch = { active: false, startX: 0, startY: 0, startTime: 0, curX: 0, curY: 0 };
+let touchShootPending = false;
 
 // ── Stars ────────────────────────────────────────────────────────────────────
 
@@ -1122,12 +1175,14 @@ function updateShip(dt) {
                         bullets.push(createBullet(nx, ny, ship.rotation + offset));
                     });
                     ship.shootCooldown = SHOOT_COOLDOWN + 0.05;
+                    touchShootPending = false;
                     playLaser();
                 }
             } else {
                 if (bullets.length < 12) {
                     bullets.push(createBullet(nx, ny, ship.rotation));
                     ship.shootCooldown = cooldown;
+                    touchShootPending = false;
                     playLaser();
                 }
             }
@@ -1391,6 +1446,7 @@ function updateWeaponState(dt) {
             laserCharge = Math.min(1, laserCharge + LASER_REGEN * dt);
         }
     }
+    touchShootPending = false; // consume tap input after each frame
 }
 
 function laserRaycast() {
@@ -1412,6 +1468,16 @@ function laserRaycast() {
 
     const reach = Math.min(target ? bestT : 900, 900);
     return { sx: ox, sy: oy, ex: ox + dx * reach, ey: oy + dy * reach, target };
+}
+
+function bombButtonRect() {
+    const size = Math.max(48, Math.min(72, CANVAS_W * 0.1));
+    return { x: CANVAS_W - size - 12, y: CANVAS_H - size - 12, w: size, h: size };
+}
+
+function isBombButtonHit(cx, cy) {
+    const r = bombButtonRect();
+    return cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h;
 }
 
 function detonateBomb() {
@@ -1525,6 +1591,25 @@ function checkCollisions() {
                     if (nameEntryRank === 0) nameEntryRank = leaderboard.length + 1;
                     nameEntryText = '';
                     state = 'name_entry';
+                    // Summon mobile keyboard via hidden input
+                    const _ni = document.getElementById('nameInput');
+                    if (_ni) {
+                        _ni.value = '';
+                        _ni.style.pointerEvents = 'auto';
+                        _ni.focus();
+                        _ni.oninput = () => {
+                            nameEntryText = _ni.value.toUpperCase().slice(0, MAX_NAME_LENGTH);
+                        };
+                        _ni.onkeydown = ev => {
+                            if (ev.key === 'Enter') {
+                                _ni.blur();
+                                _ni.style.pointerEvents = 'none';
+                                const enteredName = nameEntryText.trim() || 'PILOT';
+                                state = 'menu';
+                                submitScore(enteredName);
+                            }
+                        };
+                    }
                 } else {
                     state = 'game_over';
                     gameOverLockout = 2.0;
@@ -2430,6 +2515,42 @@ function renderHUD() {
         ctx.textAlign = 'left';
         ctx.fillText(`BOMB x${bombs}  [B]`, 16, by);
         ctx.shadowBlur = 0;
+
+        // Touch-only bomb button (bottom-right corner)
+        if ('ontouchstart' in window) {
+            const r = bombButtonRect();
+            ctx.save();
+            ctx.globalAlpha = 0.82;
+            ctx.fillStyle = 'rgba(255,120,0,0.25)';
+            ctx.strokeStyle = POWERUP_COLORS.bomb;
+            ctx.lineWidth = 2.5;
+            const rad = 10;
+            ctx.beginPath();
+            ctx.moveTo(r.x + rad, r.y);
+            ctx.lineTo(r.x + r.w - rad, r.y);
+            ctx.arcTo(r.x + r.w, r.y, r.x + r.w, r.y + rad, rad);
+            ctx.lineTo(r.x + r.w, r.y + r.h - rad);
+            ctx.arcTo(r.x + r.w, r.y + r.h, r.x + r.w - rad, r.y + r.h, rad);
+            ctx.lineTo(r.x + rad, r.y + r.h);
+            ctx.arcTo(r.x, r.y + r.h, r.x, r.y + r.h - rad, rad);
+            ctx.lineTo(r.x, r.y + rad);
+            ctx.arcTo(r.x, r.y, r.x + rad, r.y, rad);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+            ctx.shadowColor = POWERUP_COLORS.bomb;
+            ctx.shadowBlur  = 10;
+            ctx.fillStyle   = POWERUP_COLORS.bomb;
+            ctx.font        = `bold ${Math.round(r.w * 0.45)}px monospace`;
+            ctx.textAlign   = 'center';
+            ctx.fillText('B', r.x + r.w / 2, r.y + r.h * 0.52 + r.w * 0.16);
+            ctx.shadowBlur  = 0;
+            ctx.font        = `${Math.round(r.w * 0.26)}px monospace`;
+            ctx.fillStyle   = '#ffffff';
+            ctx.fillText(`x${bombs}`, r.x + r.w / 2, r.y + r.h * 0.85);
+            ctx.restore();
+        }
     }
 
     // Auto-aim assist indicator (bottom-right)

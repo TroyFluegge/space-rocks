@@ -2,16 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Space Rocks</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
-        canvas { display: block; }
+        canvas { display: block; touch-action: none; user-select: none; }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+    <input id="nameInput" type="text" maxlength="12" autocomplete="off"
+           autocorrect="off" autocapitalize="characters" spellcheck="false"
+           style="position:absolute;opacity:0;pointer-events:none;top:50%;left:50%;width:1px;height:1px;">
     <script src="game.js"></script>
 </body>
 </html>

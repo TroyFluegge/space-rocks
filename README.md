@@ -15,6 +15,7 @@ The server handles both game files and the global leaderboard API. Scores are st
 
 ## Controls
 
+### Keyboard
 | Key | Action |
 |---|---|
 | `W` / `↑` | Thrust forward |
@@ -23,6 +24,17 @@ The server handles both game files and the global leaderboard API. Scores are st
 | `D` / `→` | Rotate right |
 | `Space` | Shoot / hold for laser beam |
 | `B` | Detonate bomb |
+
+### Mobile / Touch
+| Gesture | Action |
+|---|---|
+| Quick tap (< 180 ms, < 22 px) | Fire a shot |
+| Drag left / right ≥ 30 px | Rotate ship |
+| Drag up ≥ 30 px | Thrust forward |
+| Tap **B** button (bottom-right) | Detonate bomb (visible only when you have bombs) |
+| Tap on menu or game-over screen | Start / restart |
+
+Touch anywhere on the canvas and drag relative to where you touched — no fixed joystick to hunt for. Name entry on mobile opens your keyboard automatically.
 
 ## Gameplay
 
