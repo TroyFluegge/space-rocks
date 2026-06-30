@@ -150,21 +150,43 @@ function isLeft()    { return keys['KeyA'] || keys['ArrowLeft'];  }
 function isRight()   { return keys['KeyD'] || keys['ArrowRight']; }
 function isForward() {
     if (keys['KeyW'] || keys['ArrowUp']) return true;
-    if (gyroActive) return (gyroBaseBeta - gyroBeta) > GYRO_THRUST_ANGLE;
+    if (gyroActive) return getDeviceTilt().tiltFB > GYRO_THRUST_ANGLE;
     return false;
 }
 function isBack()    { return keys['KeyS'] || keys['ArrowDown']; }
 function isShoot()   { return keys['Space'] || touchShootPending; }
 function isStart()   { return keys['Space'] || keys['Enter']; }
 
+// Read current screen rotation angle (0, 90, 180, 270).
+function getScreenAngle() {
+    if (screen.orientation && typeof screen.orientation.angle === 'number') {
+        return screen.orientation.angle;
+    }
+    return typeof window.orientation === 'number' ? window.orientation : 0;
+}
+
+// Return { tiltLR, tiltFB } compensated for screen orientation.
+// tiltLR: negative = player's left, positive = player's right.
+// tiltFB: positive = player tilting device forward (thrust).
+function getDeviceTilt() {
+    const dGamma = gyroGamma - gyroBaseGamma;
+    const dBeta  = gyroBeta  - gyroBaseBeta;
+    switch (getScreenAngle()) {
+        case 90:          return { tiltLR:  dBeta, tiltFB:  dGamma };
+        case 270: case -90: return { tiltLR: -dBeta, tiltFB: -dGamma };
+        case 180:         return { tiltLR: -dGamma, tiltFB:  dBeta };
+        default:          return { tiltLR:  dGamma, tiltFB: -dBeta };
+    }
+}
+
 // Returns -1..1: negative = rotate left, positive = rotate right.
 // Returns 0 when inside dead zone or gyro inactive.
 function gyroRotInput() {
     if (!gyroActive) return 0;
-    const delta = gyroGamma - gyroBaseGamma;
-    if (Math.abs(delta) < GYRO_DEAD_ZONE) return 0;
-    const sign = delta > 0 ? 1 : -1;
-    return sign * Math.min(1, (Math.abs(delta) - GYRO_DEAD_ZONE) / (GYRO_MAX_TILT - GYRO_DEAD_ZONE));
+    const { tiltLR } = getDeviceTilt();
+    if (Math.abs(tiltLR) < GYRO_DEAD_ZONE) return 0;
+    const sign = tiltLR > 0 ? 1 : -1;
+    return sign * Math.min(1, (Math.abs(tiltLR) - GYRO_DEAD_ZONE) / (GYRO_MAX_TILT - GYRO_DEAD_ZONE));
 }
 
 function calibrateGyro() {
@@ -189,6 +211,16 @@ function initGyro() {
                 }
             }
         });
+
+        // Re-calibrate after the screen settles into the new orientation
+        // so the hold angle at the moment of rotation becomes the new neutral.
+        const onOrientationChange = () => {
+            setTimeout(calibrateGyro, 250);
+        };
+        if (screen.orientation) {
+            screen.orientation.addEventListener('change', onOrientationChange);
+        }
+        window.addEventListener('orientationchange', onOrientationChange);
     }
 
     if (typeof DeviceOrientationEvent !== 'undefined' &&
